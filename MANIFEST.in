@@ -1,0 +1,18 @@
+include MANIFEST.in
+include requirements.txt
+include *.json
+include *.md
+include *.py
+include *.txt
+recursive-include kh_fama *.css
+recursive-include kh_fama *.csv
+recursive-include kh_fama *.html
+recursive-include kh_fama *.ico
+recursive-include kh_fama *.js
+recursive-include kh_fama *.json
+recursive-include kh_fama *.md
+recursive-include kh_fama *.png
+recursive-include kh_fama *.py
+recursive-include kh_fama *.svg
+recursive-include kh_fama *.txt
+recursive-exclude kh_fama *.pyc
