@@ -1,0 +1,195 @@
+<style>
+    @media print {
+        .page-number:after {
+            content: counter(page);
+        }
+    }
+
+    @page {
+        size: A4 portrait;
+        margin: 20mm;
+    }
+
+    body {
+        font-family: "Helvetica", sans-serif;
+        font-size: 10pt;
+        color: #000;
+    }
+
+    .header {
+        text-align: left;
+        margin-bottom: 10px;
+    }
+
+    .header h2 {
+        margin: 0;
+        font-size: 13pt;
+        font-weight: bold;
+    }
+
+    .sub-header {
+        font-size: 10pt;
+    }
+
+    .top-right {
+        position: absolute;
+        top: 2mm;
+        right: 2mm;
+        text-align: right;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 5px;
+    }
+
+    th {
+        border: 1px solid #000;
+        background-color: #f0f0f0;
+        text-align: center;
+        font-weight: bold;
+        padding: 4px;
+    }
+
+    td {
+        border: none;
+        padding: 3px 6px;
+        text-align: right;
+    }
+
+    td:first-child, th:first-child {
+        text-align: left;
+    }
+
+    /* Customer Name Row */
+    .party-header {
+        font-weight: bold;
+        font-size: 12pt;
+        border: none;
+        padding-top: 10px;
+        text-transform: uppercase;
+    }
+
+    /* "18%" Row */
+    .tax-row {
+        font-weight: bold;
+        text-align: right;
+        border: none;
+        font-size: 10pt;
+    }
+
+    /* Party Total Row (Right side borders only) */
+    .party-total-row td {
+        font-weight: bold;
+        font-size: 11pt;
+    }
+
+    .party-total-row td:nth-child(n+2) {
+        border-top: 2px solid #000;
+        border-bottom: 2px solid #000;
+    }
+
+    /* Grand Total Row (Right side borders only) */
+    .grand-total-row td {
+        font-weight: bold;
+        font-size: 12pt;
+    }
+
+    .grand-total-row td:nth-child(n+2) {
+        border-top: 2px solid #000;
+        border-bottom: 2px solid #000;
+    }
+</style>
+
+<div class="header">
+    <h2>K. H. FAMA Textile Processing (Pvt.) Ltd.</h2>
+    <div class="sub-header">
+        <strong>Sales Invoice Listing</strong><br>
+        Party-wise From 
+        {{ frappe.datetime.str_to_user(filters.from_date).split("-").reverse().join("-") }} 
+        To {{ frappe.datetime.str_to_user(filters.to_date).split("-").reverse().join("-") }}
+    </div>
+</div>
+
+<div style="text-align: right; font-size: 12px; margin-top: auto;">
+    <!-- <strong>Page:</strong> <span class="page-number"></span><br> -->
+    <strong>Date:</strong> {{ frappe.datetime.str_to_user(frappe.datetime.get_today()) }}
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Invoice # / Customer</th>
+            <th>Bill #</th>
+            <th>Garment</th>
+            <th>Qty</th>
+            <th>Rate</th>
+            <th>Amount</th>
+            <th>Sales Tax</th>
+            <th>Total</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for (var i = 0; i < data.length; i++) { %}
+            {% var row = data[i]; %}
+
+            <!-- Customer Name Row -->
+            {% if (row.link_doctype == "Customer") { %}
+                <tr>
+                    <td></td>
+                    <td class="party-header">{{ row.invoice_no }}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td class="tax-row">18.00%</td>
+                </tr>
+            {% } %}
+
+            <!-- Normal Invoice Rows -->
+            {% if (row.garment != "Party Total" && row.garment != "Grand Total" && row.link_doctype != "Customer") { %}
+                <tr>
+                    <td>{{ row.date }}</td>
+                    <td>{{ row.invoice_no }}</td>
+                    <td>{{ row.bill_no }}</td>
+                    <td style="text-align:left;">{{ row.garment }}</td>
+                    <td>{{ (row.qty || 0).toLocaleString() }}</td>
+                    <td>{{ (row.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                </tr>
+            {% } %}
+
+            <!-- Party Total Row -->
+            {% if (row.garment == "Party Total") { %}
+                <tr class="party-total-row">
+                    <td colspan="4" style="text-align:right;">Party Total:</td>
+                    <td>{{ (row.qty || 0).toLocaleString() }}</td>
+                    <td></td>
+                    <td>{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                </tr>
+            {% } %}
+
+            <!-- Grand Total Row -->
+            {% if (row.garment == "Grand Total") { %}
+                <tr class="grand-total-row">
+                    <td colspan="4" style="text-align:right;">Grand Total:</td>
+                    <td>{{ (row.qty || 0).toLocaleString() }}</td>
+                    <td></td>
+                    <td>{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td>{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                </tr>
+            {% } %}
+        {% } %}
+    </tbody>
+</table>

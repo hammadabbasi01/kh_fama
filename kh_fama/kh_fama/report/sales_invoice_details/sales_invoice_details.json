@@ -1,0 +1,37 @@
+{
+ "add_total_row": 0,
+ "columns": [],
+ "creation": "2025-10-16 12:51:32.473221",
+ "disable_prepared_report": 0,
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "SILK",
+ "modified": "2025-10-17 19:01:51.909238",
+ "modified_by": "Administrator",
+ "module": "KH Fama",
+ "name": "Sales Invoice Details",
+ "owner": "ghaith@srp.ai",
+ "prepared_report": 0,
+ "ref_doctype": "Sales Invoice",
+ "report_name": "Sales Invoice Details",
+ "report_script": "from_date = filters.get(\"from_date\") or \"2000-01-01\"\r\nto_date = filters.get(\"to_date\") or frappe.utils.nowdate()\r\n\r\n# --- Define columns ---\r\ncolumns = [\r\n    {\"label\": \"Date\", \"fieldname\": \"date\", \"fieldtype\": \"Date\", \"width\": 100},\r\n    {\r\n        \"label\": \"Invoice # / Customer\",\r\n        \"fieldname\": \"invoice_no\",\r\n        \"fieldtype\": \"Dynamic Link\",\r\n        \"options\": \"link_doctype\",\r\n        \"width\": 180\r\n    },\r\n    {\"label\": \"Bill #\", \"fieldname\": \"bill_no\", \"fieldtype\": \"Data\", \"width\": 100},\r\n    {\"label\": \"Garment\", \"fieldname\": \"garment\", \"fieldtype\": \"Data\", \"width\": 150},\r\n    {\"label\": \"Qty\", \"fieldname\": \"qty\", \"fieldtype\": \"Float\", \"width\": 80},\r\n    {\"label\": \"Rate\", \"fieldname\": \"rate\", \"fieldtype\": \"Currency\", \"width\": 100},\r\n    {\"label\": \"Amount\", \"fieldname\": \"amount\", \"fieldtype\": \"Currency\", \"width\": 120},\r\n    {\"label\": \"Sales Tax\", \"fieldname\": \"sales_tax\", \"fieldtype\": \"Currency\", \"width\": 100},\r\n    {\"label\": \"Total\", \"fieldname\": \"total\", \"fieldtype\": \"Currency\", \"width\": 100},\r\n]\r\n\r\n# --- Query ---\r\nraw_data = frappe.db.sql(\"\"\"\r\n    SELECT \r\n        si.customer AS customer,\r\n        si.posting_date AS date,\r\n        si.name AS invoice_no,\r\n        si.po_no AS bill_no,\r\n        sii.item_name AS garment,\r\n        sii.qty AS qty,\r\n        sii.rate AS rate,\r\n        sii.amount AS amount,\r\n        (sii.amount * 0.18) AS sales_tax,\r\n        ((sii.amount * 0.18) + sii.amount) AS total\r\n    FROM `tabSales Invoice` si\r\n    INNER JOIN `tabSales Invoice Item` sii ON si.name = sii.parent\r\n    WHERE si.posting_date BETWEEN %(from_date)s AND %(to_date)s\r\n    ORDER BY si.customer, si.posting_date ASC\r\n\"\"\", {\"from_date\": from_date, \"to_date\": to_date}, as_dict=True)\r\n\r\n# --- Group by Customer with Party + Grand Totals ---\r\ndata = []\r\ncurrent_customer = None\r\n\r\n# Per customer totals\r\ntotal_qty = 0\r\ntotal_amount = 0\r\ntotal_sales_tax = 0\r\ntotal_total = 0\r\n\r\n# Grand totals\r\ngrand_qty = 0\r\ngrand_amount = 0\r\ngrand_sales_tax = 0\r\ngrand_total = 0\r\n\r\nfor row in raw_data:\r\n    if row.customer != current_customer:\r\n        # Add subtotal for previous customer\r\n        if current_customer:\r\n            data.append({\r\n                \"date\": \"\",\r\n                \"invoice_no\": \"\",  # empty invoice_no for totals\r\n                \"link_doctype\": \"\",\r\n                \"bill_no\": \"\",\r\n                \"garment\": \"Party Total\",  # moved label here\r\n                \"qty\": total_qty,\r\n                \"rate\": \"\",\r\n                \"amount\": total_amount,\r\n                \"sales_tax\": total_sales_tax,\r\n                \"total\": total_total\r\n            })\r\n            # Add to grand totals\r\n            grand_qty = grand_qty + total_qty\r\n            grand_amount = grand_amount + total_amount\r\n            grand_sales_tax = grand_sales_tax + total_sales_tax\r\n            grand_total = grand_total + total_total\r\n\r\n            # Reset party totals\r\n            total_qty = 0\r\n            total_amount = 0\r\n            total_sales_tax = 0\r\n            total_total = 0\r\n\r\n        # New customer header (clickable)\r\n        data.append({\r\n            \"date\": \"\",\r\n            \"invoice_no\": row.customer,\r\n            \"link_doctype\": \"Customer\",\r\n            \"bill_no\": \"\",\r\n            \"garment\": \"\",\r\n            \"qty\": \"\",\r\n            \"rate\": \"\",\r\n            \"amount\": \"\",\r\n            \"sales_tax\": \"\",\r\n            \"total\": \"\"\r\n        })\r\n        current_customer = row.customer\r\n\r\n    # Normal invoice line\r\n    row[\"link_doctype\"] = \"Sales Invoice\"\r\n    data.append(row)\r\n\r\n    # Totals per customer\r\n    total_qty = total_qty + (row.qty or 0)\r\n    total_amount = total_amount + (row.amount or 0)\r\n    total_sales_tax = total_sales_tax + (row.sales_tax or 0)\r\n    total_total = total_total + (row.total or 0)\r\n\r\n# Final party total\r\nif current_customer:\r\n    data.append({\r\n        \"date\": \"\",\r\n        \"invoice_no\": \"\",\r\n        \"link_doctype\": \"\",\r\n        \"bill_no\": \"\",\r\n        \"garment\": \"Party Total\",  # moved label here\r\n        \"qty\": total_qty,\r\n        \"rate\": \"\",\r\n        \"amount\": total_amount,\r\n        \"sales_tax\": total_sales_tax,\r\n        \"total\": total_total\r\n    })\r\n    grand_qty = grand_qty + total_qty\r\n    grand_amount = grand_amount + total_amount\r\n    grand_sales_tax = grand_sales_tax + total_sales_tax\r\n    grand_total = grand_total + total_total\r\n\r\n# --- Grand Total row ---\r\ndata.append({\r\n    \"date\": \"\",\r\n    \"invoice_no\": \"\",\r\n    \"link_doctype\": \"\",\r\n    \"bill_no\": \"\",\r\n    \"garment\": \"Grand Total\",  # moved label here\r\n    \"qty\": grand_qty,\r\n    \"rate\": \"\",\r\n    \"amount\": grand_amount,\r\n    \"sales_tax\": grand_sales_tax,\r\n    \"total\": grand_total\r\n})\r\n\r\ndata = columns, data\r\n",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "Accounts Manager"
+  },
+  {
+   "role": "Accounts User"
+  },
+  {
+   "role": "Employee Self Service"
+  },
+  {
+   "role": "Analytics"
+  }
+ ]
+}
