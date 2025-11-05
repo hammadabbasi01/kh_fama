@@ -1,0 +1,127 @@
+<style>
+@media print {
+    .page-number:after {
+        content: counter(page);
+    }
+}
+@page {
+    size: A4 landscape;
+    margin: 15mm;
+}
+body {
+    font-family: "Helvetica", sans-serif;
+    font-size: 10pt;
+    color: #000;
+}
+h3 {
+    text-align: left;
+    margin-bottom: 4px;
+}
+.sub-header {
+    text-align: left;
+    font-size: 10pt;
+    margin-bottom: 10px;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+th, td {
+    border: 1px solid #000;
+    padding: 3px 6px;
+    text-align: right;
+}
+th:first-child,
+td:first-child {
+    text-align: center;
+}
+th:nth-child(2),
+td:nth-child(2),
+th:nth-child(3),
+td:nth-child(3) {
+    text-align: left;
+}
+th {
+    background-color: #f0f0f0;
+    font-weight: bold;
+}
+.customer-row {
+    font-weight: bold;
+    font-size: 11pt;
+    background-color: #e8f5e9;
+}
+.detail-row {
+    background-color: #fff;
+}
+.grand-total-row {
+    background-color: #e0f7fa;
+    font-weight: bold;
+    border-top: 2px solid #000;
+    border-bottom: 2px solid #000;
+}
+</style>
+
+<h3>K.H. FAMA TEXTILE PROCESSING (PVT) LTD.</h3>
+<div class="sub-header">
+    CUSTOMERS SALES/RECEIPT SUMMARY (Month-wise)
+    <br>
+
+    <script>
+        (function() {
+            var monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            
+            var from_date = new Date("{{ filters.from_date }}");
+            var to_date = new Date("{{ filters.to_date }}");
+
+            var from_month = monthNames[from_date.getMonth()] + "-" + String(from_date.getFullYear()).slice(-2);
+            var to_month = monthNames[to_date.getMonth()] + "-" + String(to_date.getFullYear()).slice(-2);
+
+            var receipt_date = monthNames[to_date.getMonth()] + " " + to_date.getDate() + ", " + to_date.getFullYear();
+
+            document.write("BILLING: " + from_month + " TO " + to_month + "<br>");
+            document.write("RECEIPTS UPTO " + receipt_date);
+        })();
+    </script>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>S. No</th>
+            <th>Customer Name</th>
+            <th></th>
+            {% for (var c = 0; c < columns.length; c++) { %}
+                {% var col = columns[c]; %}
+                {% if (['sr_no', 'customer_name', 'detail_type'].indexOf(col.fieldname) === -1) { %}
+                    <th>{{ col.label }}</th>
+                {% } %}
+            {% } %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for (var i = 0; i < data.length; i++) { %}
+            {% var row = data[i]; %}
+            {% var is_grand_total = row.customer_name && row.customer_name.indexOf('G. Total') !== -1; %}
+            
+            <tr class="{% if (is_grand_total) { %}grand-total-row{% } else if (row.customer_name) { %}customer-row{% } else { %}detail-row{% } %}">
+                <td>{{ row.sr_no || '' }}</td>
+                <td>{% if (row.customer_name) { %}{{ row.customer_name }}{% } %}</td>
+                <td>{{ row.detail_type }}</td>
+
+                {% for (var j = 0; j < columns.length; j++) { %}
+                    {% var col = columns[j]; %}
+                    {% if (['sr_no', 'customer_name', 'detail_type'].indexOf(col.fieldname) === -1) { %}
+                        <td>
+                            {% if (row[col.fieldname]) { %}
+                                {{ (row[col.fieldname] || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) }}
+                            {% } else { %}
+                                -
+                            {% } %}
+                        </td>
+                    {% } %}
+                {% } %}
+            </tr>
+        {% } %}
+    </tbody>
+</table>

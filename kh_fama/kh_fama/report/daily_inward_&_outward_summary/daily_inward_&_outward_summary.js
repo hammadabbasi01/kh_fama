@@ -57,5 +57,28 @@ frappe.query_reports["Daily Inward & Outward Summary"] = {
             "fieldtype": "Data",
             "reqd": 0
         }
-    ]
+    ],
+    formatter: function(value, row, column, data, default_formatter) {
+        value = default_formatter(value, row, column, data);
+
+        // Apply styles based on row type
+        if (data) {
+            if (data.description && data.description.includes("Total")) {
+                // Style for customer or process totals
+                return `<span style="background-color:#e6f7ff;font-weight:bold;">${value}</span>`;
+            } else if (data.description && data.description.includes("Grand Total")) {
+                // Style for grand total
+                return `<span style="background-color:#ffe6e6;font-weight:bold;">${value}</span>`;
+            }
+            else {
+                //row gray color
+                return  `<span style="background-color:#f9f9f9;">${value}</span>`;
+            }
+        }
+
+        return value;
+    }
+
 };
+
+
