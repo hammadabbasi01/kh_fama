@@ -1,12 +1,3 @@
-# Copyright (c) 2025, hammad and contributors
-# For license information, please see license.txt
-
-# import frappe
-
-
-# Copyright (c) 2025, hammad and contributors
-# For license information, please see license.txt
-
 import frappe
 from frappe.utils import getdate, formatdate, add_months
 from dateutil.relativedelta import relativedelta
@@ -34,6 +25,17 @@ def get_columns(from_date, to_date):
         {"label": "Detail Type", "fieldname": "detail_type", "fieldtype": "Data", "width": 150},
     ]
 
+    # Add "As On <Previous Month>" column
+    prev_month = add_months(from_date, -1)
+    prev_label = f"As On {formatdate(prev_month, 'MMM-yy')}"
+    columns.append({
+        "label": prev_label,
+        "fieldname": f"as_on_{formatdate(prev_month, 'MMM-yy').lower().replace('-', '_')}",
+        "fieldtype": "Currency",
+        "width": 120
+    })
+
+    # Add dynamic month columns
     current = from_date.replace(day=1)
     while current <= to_date:
         month_label = formatdate(current, "MMM-yy")
@@ -58,37 +60,62 @@ def get_data(from_date, to_date, customer_filter=None):
     """Fetch and prepare data for each customer and month"""
     data = []
 
-    # ✅ Apply customer filter if selected
     if customer_filter:
         customers = frappe.db.get_all("Customer", fields=["name"], filters={"name": customer_filter})
     else:
         customers = frappe.db.get_all("Customer", fields=["name"], order_by="name")
 
-    # To collect grand totals
-    grand_totals = {
-        "Billing": {},
-        "Tax Ded.": {},
-        "Other Ded.": {},
-        "Received": {},
-        "Total": {},
-        "Balance": {}
-    }
-
+    grand_totals = {k: {} for k in ["Billing", "Tax Ded.", "Other Ded.", "Received", "Total", "Balance"]}
     sr_no = 1
+
+    prev_month = add_months(from_date, -1)
+    prev_end_date = prev_month + relativedelta(day=31)
+    prev_label = f"As On {formatdate(prev_month, 'MMM-yy')}"
+    prev_field = f"as_on_{formatdate(prev_month, 'MMM-yy').lower().replace('-', '_')}"
+
     for cust in customers:
         customer_name = cust.name
         customer_rows = []
+        rows = {k: {} for k in ["Billing", "Tax Ded.", "Other Ded.", "Received", "Total", "Balance"]}
+        total_summary = {k: 0 for k in rows.keys()}
 
-        rows = {
-            "Billing": {},
-            "Tax Ded.": {},
-            "Other Ded.": {},
-            "Received": {},
-            "Total": {},
-            "Balance": {}
-        }
-        total_summary = {key: 0 for key in rows.keys()}
+        # --- Calculate cumulative data up to previous month ---
+        billing_prev = frappe.db.sql("""
+            SELECT COALESCE(SUM(base_total), 0)
+            FROM `tabSales Invoice`
+            WHERE customer = %s AND posting_date <= %s AND docstatus = 1
+        """, (customer_name, prev_end_date))[0][0]
 
+        tax_ded_prev = frappe.db.sql("""
+            SELECT COALESCE(SUM(total_taxes_and_charges), 0)
+            FROM `tabSales Invoice`
+            WHERE customer = %s AND posting_date <= %s AND docstatus = 1
+        """, (customer_name, prev_end_date))[0][0]
+
+        other_ded_prev = 0
+
+        received_prev = frappe.db.sql("""
+            SELECT COALESCE(SUM(paid_amount), 0)
+            FROM `tabPayment Entry`
+            WHERE party_type = 'Customer'
+              AND party = %s
+              AND payment_type = 'Receive'
+              AND posting_date <= %s
+              AND docstatus = 1
+        """, (customer_name, prev_end_date))[0][0]
+
+        total_prev = billing_prev + tax_ded_prev + other_ded_prev
+        balance_prev = total_prev - received_prev
+
+        # Save cumulative values
+        rows["Billing"][prev_label] = billing_prev
+        rows["Tax Ded."][prev_label] = tax_ded_prev
+        rows["Other Ded."][prev_label] = other_ded_prev
+        rows["Received"][prev_label] = received_prev
+        rows["Total"][prev_label] = total_prev
+        rows["Balance"][prev_label] = balance_prev
+
+        # --- Add monthly data ---
         current = from_date.replace(day=1)
         while current <= to_date:
             month_key = formatdate(current, "MMM-yy")
@@ -134,40 +161,34 @@ def get_data(from_date, to_date, customer_filter=None):
             rows["Total"][month_key] = total
             rows["Balance"][month_key] = balance
 
-            # Update per-customer total
-            total_summary["Billing"] += billing
-            total_summary["Tax Ded."] += tax_ded
-            total_summary["Other Ded."] += other_ded
-            total_summary["Received"] += received
-            total_summary["Total"] += total
-            total_summary["Balance"] += balance
+            # Update totals
+            for key in total_summary.keys():
+                total_summary[key] += rows[key].get(month_key, 0)
 
-            # --- Add to grand total ---
-            for k, v in rows.items():
-                grand_totals[k][month_key] = grand_totals[k].get(month_key, 0) + v[month_key]
+            # Add to grand totals
+            for key in rows.keys():
+                grand_totals[key][month_key] = grand_totals[key].get(month_key, 0) + rows[key][month_key]
 
             current = add_months(current, 1)
 
-        # ✅ Skip customer if there’s no transaction in this period
-        total_activity = (
-            total_summary["Billing"]
-            + total_summary["Tax Ded."]
-            + total_summary["Received"]
-        )
-        if total_activity == 0:
-            continue  # skip this customer completely
+        # Skip customers with no transactions
+        if sum(total_summary.values()) == 0 and total_prev == 0:
+            continue
 
-        # Prepare output rows for this customer
+        # Prepare rows per customer
         for idx, label in enumerate(rows.keys()):
             row_data = {
                 "sr_no": sr_no if label == "Billing" else "",
                 "customer_name": f"<b style='font-size:13px'>{customer_name}</b>" if label == "Billing" else "",
-                "detail_type": label
+                "detail_type": label,
+                prev_field: rows[label].get(prev_label, 0)
             }
 
             for month, value in rows[label].items():
-                row_data[month.lower().replace('-', '_')] = value
-            row_data["total"] = total_summary[label]
+                if month != prev_label:
+                    row_data[month.lower().replace('-', '_')] = value
+
+            row_data["total"] = total_summary[label] + rows[label].get(prev_label, 0)
             customer_rows.append(row_data)
 
         data.extend(customer_rows)
@@ -175,7 +196,7 @@ def get_data(from_date, to_date, customer_filter=None):
 
     # --- GRAND TOTAL SECTION ---
     for label in grand_totals.keys():
-        row = {"sr_no": "", "customer_name": "<b>G. Total</b>", "detail_type": label}
+        row = {"sr_no": "", "customer_name": "<b>G. Total</b>", "detail_type": label, prev_field: 0}
         total_value = 0
 
         current = from_date.replace(day=1)

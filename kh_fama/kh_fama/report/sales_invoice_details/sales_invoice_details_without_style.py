@@ -7,10 +7,8 @@
 # Copyright (c) 2025, hammad and contributors
 # For license information, please see license.txt
 
-# Copyright (c) 2025, hammad and contributors
-# For license information, please see license.txt
-
 import frappe
+
 
 def execute(filters=None):
     if not filters:
@@ -42,7 +40,6 @@ def execute(filters=None):
                     "link_doctype": "",
                     "bill_no": "",
                     "garment": "Party Total",
-                    "custom_style": "",
                     "qty": total_qty,
                     "rate": "",
                     "amount": total_amount,
@@ -65,7 +62,6 @@ def execute(filters=None):
                 "link_doctype": "Customer",
                 "bill_no": "",
                 "garment": "",
-                "custom_style": "",
                 "qty": "",
                 "rate": "",
                 "amount": "",
@@ -92,7 +88,6 @@ def execute(filters=None):
             "link_doctype": "",
             "bill_no": "",
             "garment": "Party Total",
-            "custom_style": "",
             "qty": total_qty,
             "rate": "",
             "amount": total_amount,
@@ -111,7 +106,6 @@ def execute(filters=None):
         "link_doctype": "",
         "bill_no": "",
         "garment": "Grand Total",
-        "custom_style": "",
         "qty": grand_qty,
         "rate": "",
         "amount": grand_amount,
@@ -135,7 +129,6 @@ def get_columns():
         },
         {"label": "Bill #", "fieldname": "bill_no", "fieldtype": "Data", "width": 100},
         {"label": "Garment", "fieldname": "garment", "fieldtype": "Data", "width": 150},
-        {"label": "Style", "fieldname": "custom_style", "fieldtype": "Data", "width": 120},
         {"label": "Qty", "fieldname": "qty", "fieldtype": "Float", "width": 80},
         {"label": "Rate", "fieldname": "rate", "fieldtype": "Currency", "width": 100},
         {"label": "Amount", "fieldname": "amount", "fieldtype": "Currency", "width": 120},
@@ -160,7 +153,6 @@ def get_data(conditions, from_date, to_date):
             si.name AS invoice_no,
             si.po_no AS bill_no,
             sii.item_name AS garment,
-            sii.custom_style,
             sii.qty AS qty,
             sii.rate AS rate,
             sii.amount AS amount,
