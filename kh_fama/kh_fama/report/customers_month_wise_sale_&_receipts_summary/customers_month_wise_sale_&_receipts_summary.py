@@ -1,4 +1,4 @@
-# Copyright (c) 2025, hammad and contributors
+# Copyright (c) 2025, Hammad
 # For license information, please see license.txt
 
 import frappe
@@ -10,135 +10,135 @@ def execute(filters=None):
     from_date = filters.get("from_date") or "2000-01-01"
     to_date = filters.get("to_date") or frappe.utils.nowdate()
 
-    # --- Get conditions and run query ---
-    conditions = get_conditions(from_date, to_date)
-    results = get_data(from_date, to_date, conditions)
+    # Get monthly data
+    sales_data = get_sales_data(from_date, to_date)
+    receipts_data = get_receipts_data(from_date, to_date)
+    opening_balances = get_opening_balances(from_date)
 
-    # --- Build unique month list ---
-    months = sorted(list({row['month'] for row in results}))
+    # ✅ Collect and sort months chronologically
+    def month_sort_key(month_label):
+        # Convert 'Aug 2025' → datetime(2025, 8, 1)
+        try:
+            return frappe.utils.get_datetime("01 " + month_label).date()
+        except Exception:
+            return frappe.utils.get_datetime("01 Jan 1900").date()
 
-    # --- Build unique customer list (alphabetical order) ---
-    customers = sorted(list({row['customer'] for row in results}), key=lambda x: x.lower() if x else "")
+    months = sorted(
+        list({row['month'] for row in sales_data + receipts_data}),
+        key=month_sort_key
+    )
 
-    # --- Build final data ---
+    # Unique customers from all sources
+    customers = sorted(
+        list({
+            *[row['customer'] for row in sales_data],
+            *[row['customer'] for row in receipts_data],
+            *opening_balances.keys()
+        }),
+        key=lambda x: x.lower() if x else ""
+    )
+
     final_data = []
+
     for customer in customers:
-        customer_row = {
-            'customer': customer,
-            'opening': 0,
-            'customer_ledger': 0
+        row = {
+            "customer": customer,
+            "opening": opening_balances.get(customer, 0),
+            "customer_ledger": 0
         }
 
         # Initialize month columns
         for month in months:
-            customer_row[f"{month}_receipts"] = 0
-            customer_row[f"{month}_sales"] = 0
+            row[f"{month}_sales"] = 0
+            row[f"{month}_receipts"] = 0
 
-        # Fill from query results
-        for row in results:
-            if row['customer'] == customer:
-                customer_row['opening'] = row.get('opening') or 0
-                customer_row['customer_ledger'] = row.get('customer_ledger') or 0
-                customer_row[f"{row['month']}_receipts"] = row.get('receipts') or 0
-                customer_row[f"{row['month']}_sales"] = row.get('sales') or 0
+        # Fill monthly sales
+        for s in sales_data:
+            if s["customer"] == customer:
+                row[f"{s['month']}_sales"] = s["sales"]
 
-        final_data.append(customer_row)
+        # Fill monthly receipts
+        for r in receipts_data:
+            if r["customer"] == customer:
+                row[f"{r['month']}_receipts"] = r["receipts"]
 
-    # --- Add total row ---
-    total_row = {'customer': 'Total', 'opening': 0, 'customer_ledger': 0}
+        # Calculate ledger (Opening + Total Sales − Total Receipts)
+        total_sales = sum(row[f"{m}_sales"] for m in months)
+        total_receipts = sum(row[f"{m}_receipts"] for m in months)
+        row["customer_ledger"] = row["opening"] + total_sales - total_receipts
 
-    # Initialize all month columns in total_row
+        final_data.append(row)
+
+    # Add total row
+    total_row = {"customer": "Total", "opening": 0, "customer_ledger": 0}
     for month in months:
-        total_row[f"{month}_receipts"] = 0
         total_row[f"{month}_sales"] = 0
+        total_row[f"{month}_receipts"] = 0
 
-    # Sum up all numeric columns
     for row in final_data:
-        total_row['opening'] += row.get('opening', 0)
-        total_row['customer_ledger'] += row.get('customer_ledger', 0)
+        total_row["opening"] += row["opening"]
+        total_row["customer_ledger"] += row["customer_ledger"]
         for month in months:
-            total_row[f"{month}_receipts"] += row.get(f"{month}_receipts", 0)
-            total_row[f"{month}_sales"] += row.get(f"{month}_sales", 0)
+            total_row[f"{month}_sales"] += row[f"{month}_sales"]
+            total_row[f"{month}_receipts"] += row[f"{month}_receipts"]
 
-    # Append total row at the end
     final_data.append(total_row)
 
-    # --- Build columns dynamically ---
+    # Columns
     columns = get_columns(months)
 
     return columns, final_data
 
 
-def get_conditions(from_date, to_date):
-    """Return SQL condition string if needed (currently static, but flexible)."""
-    return f"""
-        si.docstatus = 1
-        AND si.posting_date >= '{from_date}'
-        AND si.posting_date <= '{to_date}'
-    """
-
-
-def get_data(from_date, to_date, conditions):
-    """Main SQL logic to fetch data."""
-    return frappe.db.sql(f'''
+def get_sales_data(from_date, to_date):
+    """Fetch monthly sales totals per customer"""
+    data = frappe.db.sql("""
         SELECT 
             si.customer,
-            DATE_FORMAT(si.posting_date, "%%b %%Y") AS month,
-
-            -- Opening Balance
-            (SELECT SUM(si2.outstanding_amount)
-             FROM `tabSales Invoice` si2
-             WHERE si2.customer = si.customer
-               AND si2.docstatus = 1
-               AND si2.posting_date < %(from_date)s
-               AND si2.status IN ("Unpaid", "Overdue")
-            ) AS opening,
-
-            -- Receipts (Now fetched from Payment Entry)
-            (
-                SELECT SUM(per.allocated_amount)
-                FROM `tabPayment Entry Reference` per
-                INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
-                WHERE pe.party_type = 'Customer'
-                  AND pe.party = si.customer
-                  AND pe.docstatus = 1
-                  AND pe.posting_date BETWEEN %(from_date)s AND %(to_date)s
-            ) AS receipts,
-
-            -- Sales (from Sales Invoice)
-            SUM(CASE WHEN si.status IN ("Unpaid", "Overdue", "Paid") THEN si.grand_total ELSE 0 END) AS sales,
-
-            -- Closing / Customer Ledger
-            (
-                (SELECT SUM(si2.outstanding_amount)
-                 FROM `tabSales Invoice` si2
-                 WHERE si2.customer = si.customer
-                   AND si2.docstatus = 1
-                   AND si2.posting_date < %(from_date)s
-                   AND si2.status IN ("Unpaid", "Overdue")
-                )
-                + SUM(CASE WHEN si.status IN ("Unpaid", "Overdue") THEN si.grand_total ELSE 0 END)
-                - (
-                    SELECT SUM(per2.allocated_amount)
-                    FROM `tabPayment Entry Reference` per2
-                    INNER JOIN `tabPayment Entry` pe2 ON pe2.name = per2.parent
-                    WHERE pe2.party_type = 'Customer'
-                      AND pe2.party = si.customer
-                      AND pe2.docstatus = 1
-                      AND pe2.posting_date BETWEEN %(from_date)s AND %(to_date)s
-                )
-            ) AS customer_ledger
-
+            DATE_FORMAT(si.posting_date, '%%b %%Y') AS month,
+            SUM(si.grand_total) AS sales
         FROM `tabSales Invoice` si
-        WHERE {conditions}
-        GROUP BY si.customer, DATE_FORMAT(si.posting_date, "%%Y-%%m")
-        ORDER BY si.customer, DATE_FORMAT(si.posting_date, "%%Y-%%m")
-    ''', {"from_date": from_date, "to_date": to_date}, as_dict=True)
+        WHERE si.docstatus = 1
+          AND si.posting_date BETWEEN %s AND %s
+        GROUP BY si.customer, DATE_FORMAT(si.posting_date, '%%Y-%%m')
+    """, (from_date, to_date), as_dict=True)
+    return data
 
+
+def get_receipts_data(from_date, to_date):
+    """Fetch monthly receipts totals per customer from Payment Entry"""
+    data = frappe.db.sql("""
+        SELECT 
+            pe.party AS customer,
+            DATE_FORMAT(pe.posting_date, '%%b %%Y') AS month,
+            SUM(pe.paid_amount) AS receipts
+        FROM `tabPayment Entry` pe
+        WHERE pe.docstatus = 1
+          AND pe.party_type = 'Customer'
+          AND pe.payment_type = 'Receive'
+          AND pe.posting_date BETWEEN %s AND %s
+        GROUP BY pe.party, DATE_FORMAT(pe.posting_date, '%%Y-%%m')
+    """, (from_date, to_date), as_dict=True)
+    return data
+
+
+def get_opening_balances(from_date):
+    """Fetch opening balances (outstanding before from_date)"""
+    data = frappe.db.sql("""
+        SELECT 
+            si.customer,
+            SUM(si.outstanding_amount) AS opening
+        FROM `tabSales Invoice` si
+        WHERE si.docstatus = 1
+          AND si.posting_date < %s
+          AND si.status IN ('Unpaid', 'Overdue')
+        GROUP BY si.customer
+    """, (from_date,), as_dict=True)
+    return {d["customer"]: d["opening"] for d in data}
 
 
 def get_columns(months):
-    """Generate dynamic column list based on months."""
+    """Generate columns dynamically"""
     columns = [
         {"label": "Customer", "fieldname": "customer", "fieldtype": "Link", "options": "Customer", "width": 200},
         {"label": "Opening Balance", "fieldname": "opening", "fieldtype": "Currency", "width": 150},
@@ -146,14 +146,14 @@ def get_columns(months):
 
     for month in months:
         columns.append({
-            "label": f"{month} Receipts",
-            "fieldname": f"{month}_receipts",
+            "label": f"{month} Sales",
+            "fieldname": f"{month}_sales",
             "fieldtype": "Currency",
             "width": 150
         })
         columns.append({
-            "label": f"{month} Sales",
-            "fieldname": f"{month}_sales",
+            "label": f"{month} Receipts",
+            "fieldname": f"{month}_receipts",
             "fieldtype": "Currency",
             "width": 150
         })
