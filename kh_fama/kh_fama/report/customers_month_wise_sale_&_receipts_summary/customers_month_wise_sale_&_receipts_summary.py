@@ -84,6 +84,7 @@ def get_data(from_date, to_date, conditions):
         SELECT 
             si.customer,
             DATE_FORMAT(si.posting_date, "%%b %%Y") AS month,
+
             -- Opening Balance
             (SELECT SUM(si2.outstanding_amount)
              FROM `tabSales Invoice` si2
@@ -92,26 +93,48 @@ def get_data(from_date, to_date, conditions):
                AND si2.posting_date < %(from_date)s
                AND si2.status IN ("Unpaid", "Overdue")
             ) AS opening,
-            -- Receipts
-            SUM(CASE WHEN si.status = "Paid" THEN si.grand_total ELSE 0 END) AS receipts,
-            -- Sales
-            SUM(CASE WHEN si.status IN ("Unpaid", "Overdue") THEN si.grand_total ELSE 0 END) AS sales,
-            -- Closing Balance
-            ((SELECT SUM(si2.outstanding_amount)
-              FROM `tabSales Invoice` si2
-              WHERE si2.customer = si.customer
-                AND si2.docstatus = 1
-                AND si2.posting_date < %(from_date)s
-                AND si2.status IN ("Unpaid", "Overdue")
-             ) + 
-             SUM(CASE WHEN si.status IN ("Unpaid", "Overdue") THEN si.grand_total ELSE 0 END) -
-             SUM(CASE WHEN si.status = "Paid" THEN si.grand_total ELSE 0 END)
+
+            -- Receipts (Now fetched from Payment Entry)
+            (
+                SELECT SUM(per.allocated_amount)
+                FROM `tabPayment Entry Reference` per
+                INNER JOIN `tabPayment Entry` pe ON pe.name = per.parent
+                WHERE pe.party_type = 'Customer'
+                  AND pe.party = si.customer
+                  AND pe.docstatus = 1
+                  AND pe.posting_date BETWEEN %(from_date)s AND %(to_date)s
+            ) AS receipts,
+
+            -- Sales (from Sales Invoice)
+            SUM(CASE WHEN si.status IN ("Unpaid", "Overdue", "Paid") THEN si.grand_total ELSE 0 END) AS sales,
+
+            -- Closing / Customer Ledger
+            (
+                (SELECT SUM(si2.outstanding_amount)
+                 FROM `tabSales Invoice` si2
+                 WHERE si2.customer = si.customer
+                   AND si2.docstatus = 1
+                   AND si2.posting_date < %(from_date)s
+                   AND si2.status IN ("Unpaid", "Overdue")
+                )
+                + SUM(CASE WHEN si.status IN ("Unpaid", "Overdue") THEN si.grand_total ELSE 0 END)
+                - (
+                    SELECT SUM(per2.allocated_amount)
+                    FROM `tabPayment Entry Reference` per2
+                    INNER JOIN `tabPayment Entry` pe2 ON pe2.name = per2.parent
+                    WHERE pe2.party_type = 'Customer'
+                      AND pe2.party = si.customer
+                      AND pe2.docstatus = 1
+                      AND pe2.posting_date BETWEEN %(from_date)s AND %(to_date)s
+                )
             ) AS customer_ledger
+
         FROM `tabSales Invoice` si
         WHERE {conditions}
         GROUP BY si.customer, DATE_FORMAT(si.posting_date, "%%Y-%%m")
         ORDER BY si.customer, DATE_FORMAT(si.posting_date, "%%Y-%%m")
     ''', {"from_date": from_date, "to_date": to_date}, as_dict=True)
+
 
 
 def get_columns(months):
