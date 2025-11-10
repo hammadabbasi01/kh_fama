@@ -43,7 +43,7 @@
     table {
         width: 100%;
         border-collapse: collapse;
-        margin-top: 5px;
+        margin-top: 3px;
     }
 
     th {
@@ -51,13 +51,16 @@
         background-color: #f0f0f0;
         text-align: center;
         font-weight: bold;
-        padding: 4px;
+        padding: 2px 3px;
+        font-size: 9pt;
     }
 
     td {
         border: none;
-        padding: 3px 6px;
+        padding: 2px 3px;
         text-align: right;
+        font-size: 9pt; 
+        line-height: 1.1;
     }
 
     td:first-child, th:first-child {
@@ -67,10 +70,11 @@
     /* Customer Name Row */
     .party-header {
         font-weight: bold;
-        font-size: 12pt;
+        font-size: 9pt;
+        text-align: left;
         border: none;
         padding-top: 10px;
-        text-transform: uppercase;
+        
     }
 
     /* "18%" Row */
@@ -78,13 +82,13 @@
         font-weight: bold;
         text-align: right;
         border: none;
-        font-size: 10pt;
+        font-size: 9pt;
     }
 
     /* Party Total Row (Right side borders only) */
     .party-total-row td {
         font-weight: bold;
-        font-size: 11pt;
+        font-size: 9pt;
     }
 
     .party-total-row td:nth-child(n+2) {
@@ -95,7 +99,7 @@
     /* Grand Total Row (Right side borders only) */
     .grand-total-row td {
         font-weight: bold;
-        font-size: 12pt;
+        font-size: 9pt;
     }
 
     .grand-total-row td:nth-child(n+2) {
@@ -114,24 +118,24 @@
     </div>
 </div>
 
-<div style="text-align: right; font-size: 12px; margin-top: auto;">
-    <!-- <strong>Page:</strong> <span class="page-number"></span><br> -->
+<div style="text-align: right; font-size: 11px; margin-top: auto;">
+    
     <strong>Date:</strong> {{ frappe.datetime.str_to_user(frappe.datetime.get_today()) }}
 </div>
 
 <table>
     <thead>
         <tr>
-            <th>Date</th>
-            <th>Invoice # / Customer</th>
-            <th>Bill #</th>
-            <th>Garment</th>
-            <th>Style</th>
-            <th>Qty</th>
-            <th>Rate</th>
-            <th>Amount</th>
-            <th>Sales Tax</th>
-            <th>Total</th>
+            <th style = "width : 8%;">Date</th>
+            <th style = "width : 15%;">Invoice # / Customer</th>
+            <th style = "width : 8%;">Bill #</th>
+            <th style = "width : 18%;">Garment</th>
+            <th style = "width : 10%;">Style</th>
+            <th style = "width : 5%;">Qty</th>
+            <th style = "width : 8%;">Rate</th>
+            <th style = "width : 10%;">Amount</th>
+            <th style = "width : 10%;">Sales Tax</th>
+            <th style = "width : 10%;">Total</th>
         </tr>
     </thead>
 
@@ -142,10 +146,10 @@
             <!-- Customer Name Row -->
             {% if (row.link_doctype == "Customer") { %}
                 <tr>
-                    <td></td>
-                    <td class="party-header">{{ row.invoice_no }}</td>
-                    <td></td>
-                    <td></td>
+                    
+                    <td colspan = "4" class="party-header">{{ row.invoice_no }}</td>
+                    
+                    
                     <td></td>
                     <td></td>
                     <td></td>
@@ -156,16 +160,16 @@
             <!-- Normal Invoice Rows -->
             {% if (row.garment != "Party Total" && row.garment != "Grand Total" && row.link_doctype != "Customer") { %}
                 <tr>
-                    <td>{{ row.date }}</td>
-                    <td>{{ row.invoice_no }}</td>
-                    <td>{{ row.bill_no }}</td>
+                    <td style="text-align:left;">{{ row.date ? row.date.split("-").reverse().join("-") : "" }}</td>
+                    <td style="text-align:left;">{{ row.invoice_no }}</td>
+                    <td style="text-align:left;">{{ row.bill_no }}</td>
                     <td style="text-align:left;">{{ row.garment }}</td>
                     <td style="text-align:left;">{{ row.custom_style }}</td>
-                    <td>{{ (row.qty || 0).toLocaleString() }}</td>
-                    <td>{{ (row.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.qty || 0).toLocaleString() }}</td>
+                    <td style="text-align:left;">{{ (row.rate || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
                 </tr>
             {% } %}
 
@@ -173,11 +177,11 @@
             {% if (row.garment == "Party Total") { %}
                 <tr class="party-total-row">
                     <td colspan="5" style="text-align:right;">Party Total:</td>
-                    <td>{{ (row.qty || 0).toLocaleString() }}</td>
-                    <td></td>
-                    <td>{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.qty || 0).toLocaleString() }}</td>
+                    <td style="text-align:left;"></td>
+                    <td style="text-align:left;">{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
                 </tr>
             {% } %}
 
@@ -185,11 +189,11 @@
             {% if (row.garment == "Grand Total") { %}
                 <tr class="grand-total-row">
                     <td colspan="5" style="text-align:right;">Grand Total:</td>
-                    <td>{{ (row.qty || 0).toLocaleString() }}</td>
-                    <td></td>
-                    <td>{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
-                    <td>{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.qty || 0).toLocaleString() }}</td>
+                    <td style="text-align:left;"></td>
+                    <td style="text-align:left;">{{ (row.amount || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.sales_tax || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
+                    <td style="text-align:left;">{{ (row.total || 0).toLocaleString(undefined, {minimumFractionDigits:2}) }}</td>
                 </tr>
             {% } %}
         {% } %}

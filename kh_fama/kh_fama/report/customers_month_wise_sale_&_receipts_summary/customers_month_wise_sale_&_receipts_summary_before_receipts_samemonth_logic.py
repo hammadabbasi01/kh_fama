@@ -12,24 +12,29 @@ def execute(filters=None):
 
     # Get monthly data
     sales_data = get_sales_data(from_date, to_date)
-    receipts_data = get_receipts_data_linked_to_invoices(from_date, to_date)
+    receipts_data = get_receipts_data(from_date, to_date)
     opening_balances = get_opening_balances(from_date)
 
     # ✅ Collect and sort months chronologically
     def month_sort_key(month_label):
+        # Convert 'Aug 2025' → datetime(2025, 8, 1)
         try:
             return frappe.utils.get_datetime("01 " + month_label).date()
         except Exception:
             return frappe.utils.get_datetime("01 Jan 1900").date()
 
     months = sorted(
-        list({row['month'] for row in sales_data}),
+        list({row['month'] for row in sales_data + receipts_data}),
         key=month_sort_key
     )
 
-    # Unique customers from sales only (since receipts are tied to invoices)
+    # Unique customers from all sources
     customers = sorted(
-        list({row['customer'] for row in sales_data}),
+        list({
+            *[row['customer'] for row in sales_data],
+            *[row['customer'] for row in receipts_data],
+            *opening_balances.keys()
+        }),
         key=lambda x: x.lower() if x else ""
     )
 
@@ -52,7 +57,7 @@ def execute(filters=None):
             if s["customer"] == customer:
                 row[f"{s['month']}_sales"] = s["sales"]
 
-        # Fill monthly receipts (mapped to invoice month)
+        # Fill monthly receipts
         for r in receipts_data:
             if r["customer"] == customer:
                 row[f"{r['month']}_receipts"] = r["receipts"]
@@ -87,7 +92,7 @@ def execute(filters=None):
 
 def get_sales_data(from_date, to_date):
     """Fetch monthly sales totals per customer"""
-    return frappe.db.sql("""
+    data = frappe.db.sql("""
         SELECT 
             si.customer,
             DATE_FORMAT(si.posting_date, '%%b %%Y') AS month,
@@ -97,26 +102,24 @@ def get_sales_data(from_date, to_date):
           AND si.posting_date BETWEEN %s AND %s
         GROUP BY si.customer, DATE_FORMAT(si.posting_date, '%%Y-%%m')
     """, (from_date, to_date), as_dict=True)
+    return data
 
 
-def get_receipts_data_linked_to_invoices(from_date, to_date):
-    """
-    Fetch receipts based on the Sales Invoice month, not Payment Entry month.
-    Sum payments linked to invoices, even if the Payment Entry is in another month.
-    """
-    return frappe.db.sql("""
-        SELECT
-            si.customer,
-            DATE_FORMAT(si.posting_date, '%%b %%Y') AS month,
-            SUM(per.allocated_amount) AS receipts
-        FROM `tabPayment Entry Reference` per
-        INNER JOIN `tabPayment Entry` pe ON per.parent = pe.name
-        INNER JOIN `tabSales Invoice` si ON per.reference_name = si.name
+def get_receipts_data(from_date, to_date):
+    """Fetch monthly receipts totals per customer from Payment Entry"""
+    data = frappe.db.sql("""
+        SELECT 
+            pe.party AS customer,
+            DATE_FORMAT(pe.posting_date, '%%b %%Y') AS month,
+            SUM(pe.paid_amount) AS receipts
+        FROM `tabPayment Entry` pe
         WHERE pe.docstatus = 1
+          AND pe.party_type = 'Customer'
           AND pe.payment_type = 'Receive'
-          AND si.posting_date BETWEEN %s AND %s
-        GROUP BY si.customer, DATE_FORMAT(si.posting_date, '%%Y-%%m')
+          AND pe.posting_date BETWEEN %s AND %s
+        GROUP BY pe.party, DATE_FORMAT(pe.posting_date, '%%Y-%%m')
     """, (from_date, to_date), as_dict=True)
+    return data
 
 
 def get_opening_balances(from_date):
